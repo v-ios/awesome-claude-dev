@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Xcode / Swift (relevant when the playbook is copied into an app repo)
+DerivedData/
+.build/
+*.xcresult/
+xcuserdata/
+*.xcuserstate
+
+# Claude Code local state (never commit personal settings or worktrees)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/last-build.json
+CLAUDE.local.md
+
+# Editor / tooling
+.idea/
+.vscode/
+node_modules/
