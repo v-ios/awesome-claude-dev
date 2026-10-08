@@ -1,0 +1,124 @@
+# ci/ios-guardrails.yml — copy to .github/workflows/ios-guardrails.yml
+# composed: assembled from the CI gate pattern in research/notes/governance_and_context_engineering.md KQ8
+# (ios-template ci.yml: lint job + test job + app build, "CI is the backstop") and the tool CLIs quoted there
+# (swiftformat --lint, swiftlint lint --strict --reporter github-actions-logging, swiftlint analyze
+# --compiler-log-path). actions/upload-artifact and the Xcode selection step are standard GitHub Actions usage,
+# not from the notes. Validate on your runners.
+#
+# Repository variables (Settings > Variables) with their defaults: SCHEME_IOS=MyApp, SCHEME_TVOS=MyApp-tvOS,
+# WORKSPACE / PROJECT (empty = auto-detect), SIM_IOS_NAME, SIM_TVOS_NAME, ARCH_TEST_ID, XCODE_VERSION,
+# RUN_SWIFTLINT_ANALYZE=true to enable the analyzer job.
+
+name: iOS/tvOS guardrails
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCHEME_IOS: ${{ vars.SCHEME_IOS || 'MyApp' }}
+  SCHEME_TVOS: ${{ vars.SCHEME_TVOS || 'MyApp-tvOS' }}
+  WORKSPACE: ${{ vars.WORKSPACE || '' }}
+  PROJECT: ${{ vars.PROJECT || '' }}
+  SIM_IOS_NAME: ${{ vars.SIM_IOS_NAME || 'iPhone 16' }}
+  SIM_TVOS_NAME: ${{ vars.SIM_TVOS_NAME || 'Apple TV 4K (3rd generation)' }}
+  ARCH_TEST_ID: ${{ vars.ARCH_TEST_ID || 'MyAppTests/ArchitectureBoundaryTests' }}
+  DERIVED_DATA: ./.derivedData
+  XCRESULT_DIR: ./build/xcresults
+  XCB_NO_PACKAGE_RESOLUTION: "1"   # Apple CI guidance: -disableAutomaticPackageResolution, honor Package.resolved
+  NO_COLOR: "1"
+
+jobs:
+  lint:
+    name: SwiftFormat + SwiftLint (strict) + import boundaries
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Install tools
+        run: brew install swiftlint swiftformat
+      - name: SwiftFormat (lint only)
+        run: swiftformat --lint .
+      - name: SwiftLint (strict; custom architecture rules included)
+        run: swiftlint lint --strict --reporter github-actions-logging
+      - name: Import boundaries (scripts/arch-check.sh)
+        run: scripts/arch-check.sh
+      - name: Shell syntax of scripts and hooks
+        run: bash -n scripts/*.sh .claude/hooks/*.sh
+
+  build-test:
+    name: Build + test (${{ matrix.platform }})
+    needs: lint
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ios, tvos]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Select Xcode
+        if: vars.XCODE_VERSION != ''
+        run: sudo xcode-select -s "/Applications/Xcode_${{ vars.XCODE_VERSION }}.app"
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          brew install xcbeautify
+          scripts/xcb.sh list
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: .derivedData
+          key: dd-${{ matrix.platform }}-${{ runner.os }}-${{ hashFiles('**/Package.resolved', '**/Podfile.lock', '**/project.yml', '**/Project.swift') }}
+          restore-keys: dd-${{ matrix.platform }}-${{ runner.os }}-
+      - name: Build for testing
+        run: scripts/xcb.sh build-for-testing ${{ matrix.platform }}
+      - name: Swift Testing boundary suite (second enforcement of the layer rules)
+        if: matrix.platform == 'ios'
+        run: scripts/xcb.sh test-without-building ios --only-testing "$ARCH_TEST_ID"
+      - name: Run all tests
+        run: scripts/xcb.sh test-without-building ${{ matrix.platform }}
+      - name: Failing-test summary
+        if: failure()
+        run: |
+          for b in build/xcresults/*.xcresult; do
+            [ -d "$b" ] && scripts/xcresult-failures.sh "$b" --console 80 || true
+          done
+      - name: Upload result bundles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresults-${{ matrix.platform }}
+          path: |
+            build/xcresults/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  analyze:
+    # Optional: analyzer rules (unused_import, unused_declaration, capture_variable) need a clean compiler log.
+    name: SwiftLint analyzer rules
+    if: vars.RUN_SWIFTLINT_ANALYZE == 'true'
+    needs: lint
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - run: brew install swiftlint
+      - name: Clean build with log
+        run: |
+          rm -rf .derivedData
+          XCB_MAX_LINES=50 scripts/xcb.sh build ios
+          cp build/xcresults/*-build-ios-*.log xcodebuild.log
+      - name: swiftlint analyze
+        run: swiftlint analyze --compiler-log-path xcodebuild.log --strict

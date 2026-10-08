@@ -1,0 +1,87 @@
+# ci/claude-pr-review.yml — copy to .github/workflows/claude-pr-review.yml
+# Inputs, permissions and claude_args follow the anthropics/claude-code-action@v1 workflows quoted in
+# research/notes/governance_and_context_engineering.md KQ9 (github-actions docs, examples/pr-review-comprehensive.yml,
+# examples/pr-review-filtered-paths.yml, and the code-review plugin workflow). The Swift/tvOS prompt text and the
+# `paths:` list are composed. Secrets: ANTHROPIC_API_KEY (or claude_code_oauth_token). Fork PRs do not get secrets.
+# Setup alternative: run `/install-github-app` in Claude Code.
+
+name: Claude Swift/tvOS review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    paths:
+      - "**/*.swift"
+      - "**/project.yml"
+      - "**/Project.swift"
+      - "**/Package.swift"
+      - "**/Package.resolved"
+      - "**/Podfile"
+      - "**/Podfile.lock"
+      - "**/*.xcconfig"
+      - "**/*.entitlements"
+      - "**/Info.plist"
+      - "**/*.xcstrings"
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          use_sticky_comment: true
+          prompt: |
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }} as a senior iOS/tvOS engineer.
+            Read REVIEW.md and .claude/rules/architecture.md first; they define what counts as Important here.
+            Review only the diff (`gh pr diff`). Check, in order:
+            1. Swift 6 concurrency: non-Sendable values crossing isolation, @unchecked Sendable or nonisolated(unsafe) without a proof comment, UI state mutated off the main actor, Task {} capturing self where the task outlives its owner, Task in onAppear instead of .task.
+            2. Memory: retain cycles (strong self in long-lived closures/Combine sinks, strong delegates, timers), observers never removed.
+            3. SwiftUI performance/correctness: heavy work in body, AnyView, identity churn, NavigationView, image decoding on the main thread.
+            4. tvOS: interactive views unreachable by the focus engine, missing focusSection()/UIFocusGuide, .disabled() on tvOS, hover/tap-only affordances, pressesBegan without super, shared files not compiled for tvOS.
+            5. Architecture: forbidden imports across layers, business logic in views, new singletons/dependencies, any edit to .pbxproj, lockfiles, entitlements or Info.plist not justified in the PR description.
+            6. Accessibility and localization: custom controls without labels, hard-coded user-facing strings, Dynamic Type breakage.
+            7. Tests: new logic without Swift Testing coverage, XCTest and Swift Testing mixed in one target, weakened or disabled assertions.
+            Do not report formatting or anything SwiftLint/SwiftFormat/scripts/arch-check.sh already enforce.
+            Post each confirmed finding as an inline comment with severity [BLOCKING]/[IMPORTANT]/[NIT] (max five nits), the defect in one sentence and a concrete fix. Finish with one summary comment: verdict, counts per severity, and which xcb.sh/test commands the PR description says were run.
+          claude_args: '--max-turns 15 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"'
+
+  # Alternative (set repository variable USE_CODE_REVIEW_PLUGIN=true and disable the job above): the official
+  # code-review plugin. The --allowedTools line must stay: the action starts the inline-comment MCP server only
+  # when claude_args names it.
+  plugin-review:
+    if: vars.USE_CODE_REVIEW_PLUGIN == 'true' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
