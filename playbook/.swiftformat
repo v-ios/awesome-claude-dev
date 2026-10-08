@@ -1,0 +1,22 @@
+# .swiftformat — nicklockwood/SwiftFormat options. The first block mirrors tomada1114/ios-template
+# (research/notes/governance_and_context_engineering.md KQ8); the rest is composed — validate in your repo.
+# Run `swiftformat --lint .` in CI and `swiftformat <file>` from the PostToolUse hook (.claude/hooks/format-swift.sh).
+
+--swiftversion 6.2
+--indent 4
+--maxwidth 100
+--stripunusedargs closure-only
+--wraparguments before-first
+--extensionacl on-declarations
+--decimalgrouping 3,4
+
+# composed: additional options
+--wrapparameters before-first
+--wrapcollections before-first
+--commas always
+--self remove
+--semicolons never
+--trimwhitespace always
+--emptybraces no-space
+--header ignore
+--exclude .build,.derivedData,DerivedData,build,Pods,Tuist,Derived,.claude/worktrees,**/Generated,**/*.generated.swift

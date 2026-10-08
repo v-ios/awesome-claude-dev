@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "MobileBuildMCP": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mobilebuildmcp@latest", "mcp"],
+      "env": {
+        "MOBILEBUILDMCP_ENABLED_WORKFLOWS": "${MOBILEBUILDMCP_ENABLED_WORKFLOWS:-simulator}"
+      }
+    },
+    "xcode": {
+      "type": "stdio",
+      "command": "xcrun",
+      "args": ["mcpbridge"]
+    }
+  }
+}

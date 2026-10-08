@@ -1,0 +1,148 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(scripts/xcb.sh *)",
+      "Bash(scripts/sim.sh *)",
+      "Bash(scripts/xcresult-failures.sh *)",
+      "Bash(scripts/symbolicate.sh *)",
+      "Bash(scripts/arch-check.sh *)",
+      "Bash(xcodebuild build *)",
+      "Bash(xcodebuild test *)",
+      "Bash(xcodebuild build-for-testing *)",
+      "Bash(xcodebuild test-without-building *)",
+      "Bash(xcodebuild -list *)",
+      "Bash(xcodebuild -showdestinations *)",
+      "Bash(xcodebuild -showBuildSettings *)",
+      "Bash(xcodebuild -showsdks *)",
+      "Bash(xcodebuild -version)",
+      "Bash(xcodebuild -resolvePackageDependencies *)",
+      "Bash(xcrun simctl *)",
+      "Bash(xcrun xcresulttool *)",
+      "Bash(xcrun xctrace *)",
+      "Bash(xcrun crashlog *)",
+      "Bash(xcrun lldb *)",
+      "Bash(xcrun --find *)",
+      "Bash(atos *)",
+      "Bash(dwarfdump *)",
+      "Bash(swift build *)",
+      "Bash(swift test *)",
+      "Bash(swift package resolve *)",
+      "Bash(swift package describe *)",
+      "Bash(swift package show-dependencies *)",
+      "Bash(swift --version)",
+      "Bash(swiftlint *)",
+      "Bash(swiftformat *)",
+      "Bash(xcodegen *)",
+      "Bash(tuist generate *)",
+      "Bash(agvtool what-version *)",
+      "Bash(agvtool what-marketing-version *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git worktree list *)",
+      "Bash(git ls-files *)",
+      "mcp__MobileBuildMCP__*"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(pod install *)",
+      "Bash(pod update *)",
+      "Bash(pod repo update *)",
+      "Bash(swift package update *)",
+      "Bash(xcodebuild archive *)",
+      "Bash(xcodebuild -exportArchive *)",
+      "Bash(xcrun altool *)",
+      "Bash(xcrun notarytool *)",
+      "Bash(fastlane *)",
+      "Bash(agvtool new-version *)",
+      "Bash(agvtool new-marketing-version *)",
+      "Bash(xcrun simctl erase *)",
+      "Bash(xcrun simctl delete *)",
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "mcp__xcode__*"
+    ],
+    "deny": [
+      "Edit(**/*.pbxproj)",
+      "Edit(**/*.xcworkspacedata)",
+      "Edit(**/Podfile.lock)",
+      "Edit(**/Package.resolved)",
+      "Edit(**/*.entitlements)",
+      "Edit(**/*.mobileprovision)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/*.p12)",
+      "Read(**/*.p8)",
+      "Read(**/*.mobileprovision)",
+      "Read(**/GoogleService-Info.plist)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push * --force)",
+      "Bash(git push * -f)",
+      "Bash(pod deintegrate *)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-bash.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-swift.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-gate.sh",
+            "timeout": 900
+          }
+        ]
+      }
+    ]
+  }
+}
